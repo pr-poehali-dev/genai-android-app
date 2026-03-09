@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, DragEvent } from "react";
 import Icon from "@/components/ui/icon";
 
 const DURATION_OPTIONS = [
@@ -28,6 +28,7 @@ interface HistoryItem {
   aspect: string;
   timestamp: Date;
   tokens: number;
+  photo?: string;
 }
 
 export default function Index() {
@@ -44,6 +45,10 @@ export default function Index() {
   const [toast, setToast] = useState("");
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [activeTab, setActiveTab] = useState<"create" | "history">("create");
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [photoName, setPhotoName] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const godTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentOption = DURATION_OPTIONS.find((d) => d.value === duration)!;
@@ -102,6 +107,7 @@ export default function Index() {
       aspect,
       timestamp: new Date(),
       tokens: tokenCost,
+      photo: photo ?? undefined,
     };
 
     setTimeout(() => {
@@ -111,6 +117,30 @@ export default function Index() {
       showToast(`✅ Видео ${duration}с создано!`);
     }, 400);
   }, [prompt, tokens, godMode, tokenCost, duration, style, aspect]);
+
+  const handleFileSelect = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      showToast("❌ Только изображения (JPG, PNG, WEBP)");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showToast("❌ Файл слишком большой (макс. 10 МБ)");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPhoto(e.target?.result as string);
+      setPhotoName(file.name);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileSelect(file);
+  };
 
   const loadPromptFromHistory = (item: HistoryItem) => {
     setPrompt(item.prompt);
@@ -201,6 +231,63 @@ export default function Index() {
         {/* CREATE TAB */}
         {activeTab === "create" && (
           <div className="space-y-4 animate-fade-in">
+
+            {/* Photo upload */}
+            <div className="rounded-2xl gradient-border overflow-hidden" style={{background: 'rgba(255,255,255,0.04)'}}>
+              <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+                <label className="text-xs font-semibold text-white/50 uppercase tracking-widest">Фото (необязательно)</label>
+                {photo && (
+                  <button onClick={() => { setPhoto(null); setPhotoName(""); }} className="text-xs text-white/30 hover:text-red-400 transition-colors flex items-center gap-1">
+                    <Icon name="X" size={12} />
+                    Удалить
+                  </button>
+                )}
+              </div>
+
+              {photo ? (
+                <div className="relative mx-4 mb-4 rounded-xl overflow-hidden" style={{maxHeight: '180px'}}>
+                  <img src={photo} alt="Загруженное фото" className="w-full h-full object-cover" style={{maxHeight: '180px'}} />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                  <div className="absolute bottom-2 left-3 flex items-center gap-1.5">
+                    <Icon name="ImageIcon" size={11} className="text-white/60" />
+                    <span className="text-[10px] text-white/60 truncate max-w-[160px]">{photoName}</span>
+                  </div>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute top-2 right-2 px-2 py-1 rounded-lg text-[10px] font-semibold text-white transition-all"
+                    style={{background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)'}}
+                  >
+                    Заменить
+                  </button>
+                </div>
+              ) : (
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="mx-4 mb-4 rounded-xl cursor-pointer transition-all duration-200 flex flex-col items-center justify-center py-6 gap-2"
+                  style={{
+                    border: `1.5px dashed ${dragOver ? 'rgba(142,45,226,0.8)' : 'rgba(255,255,255,0.12)'}`,
+                    background: dragOver ? 'rgba(142,45,226,0.08)' : 'rgba(255,255,255,0.02)',
+                  }}
+                >
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center transition-all" style={{background: dragOver ? 'rgba(142,45,226,0.3)' : 'rgba(255,255,255,0.05)'}}>
+                    <Icon name="ImagePlus" size={20} className={dragOver ? 'text-purple-300' : 'text-white/30'} />
+                  </div>
+                  <p className="text-sm text-white/40 font-medium">Загрузи своё фото</p>
+                  <p className="text-xs text-white/20">Перетащи или нажми · JPG, PNG, WEBP · до 10 МБ</p>
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+              />
+            </div>
 
             {/* Prompt input */}
             <div className="rounded-2xl p-4 gradient-border" style={{background: 'rgba(255,255,255,0.04)'}}>
@@ -372,6 +459,9 @@ export default function Index() {
                       maxHeight: item.aspect === '9:16' ? '200px' : 'auto',
                       background: 'linear-gradient(135deg, rgba(74,0,224,0.3), rgba(142,45,226,0.2), rgba(255,111,216,0.15))'
                     }}>
+                      {item.photo && (
+                        <img src={item.photo} alt="" className="absolute inset-0 w-full h-full object-cover opacity-40" />
+                      )}
                       <div className="absolute inset-0 shimmer" />
                       <div className="relative z-10 flex flex-col items-center gap-2">
                         <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{background: 'rgba(255,255,255,0.1)'}}>
@@ -379,6 +469,12 @@ export default function Index() {
                         </div>
                         <span className="text-xs text-white/50">{item.duration} сек · {item.aspect}</span>
                       </div>
+                      {item.photo && (
+                        <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded-md flex items-center gap-1" style={{background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)'}}>
+                          <Icon name="ImageIcon" size={9} className="text-white/60" />
+                          <span className="text-[9px] text-white/60">с фото</span>
+                        </div>
+                      )}
                     </div>
 
                     <p className="text-sm text-white/80 font-medium line-clamp-2 mb-3">{item.prompt}</p>
